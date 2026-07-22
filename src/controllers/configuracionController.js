@@ -1,10 +1,69 @@
 const { pool } = require('../config/db');
 const asyncHandler = require('../utils/asyncHandler');
-const { subirImagen, eliminarImagen, eliminarArchivoTemporal } = require('../utils/cloudinaryHelper');
+const {
+  subirImagen,
+  eliminarImagen,
+  eliminarArchivoTemporal,
+  resolverUrlImagen,
+  archivoLocalExiste,
+} = require('../utils/cloudinaryHelper');
+
+function enriquecerConfiguracion(config, req) {
+  if (!config) return null;
+
+  const publicId = config.logo_public_id;
+  if (!publicId && !config.logo_url) {
+    return config;
+  }
+
+  // Logos guardados en disco local de Railway suelen perderse al redesplegar.
+  if (publicId && String(publicId).startsWith('local:')) {
+    if (!archivoLocalExiste(publicId)) {
+      return {
+        ...config,
+        logo_url: null,
+        logo_public_id: null,
+        logo_perdido: true,
+      };
+    }
+  }
+
+  // Si la URL apunta a /uploads/ pero el archivo ya no existe
+  if (config.logo_url && String(config.logo_url).includes('/uploads/')) {
+    const publicIdInferido =
+      publicId && String(publicId).startsWith('local:')
+        ? publicId
+        : `local:${String(config.logo_url).split('/uploads/')[1] || ''}`;
+    if (String(publicIdInferido).startsWith('local:') && !archivoLocalExiste(publicIdInferido)) {
+      return {
+        ...config,
+        logo_url: null,
+        logo_public_id: null,
+        logo_perdido: true,
+      };
+    }
+  }
+
+  return {
+    ...config,
+    logo_url: resolverUrlImagen(config.logo_url, publicId, req),
+  };
+}
 
 const obtenerConfiguracion = asyncHandler(async (req, res) => {
   const [filas] = await pool.query('SELECT * FROM configuracion_empresa ORDER BY id_configuracion DESC LIMIT 1');
-  res.json(filas[0] || null);
+  const config = enriquecerConfiguracion(filas[0] || null, req);
+
+  // Limpia en BD referencias a logos locales que ya no existen en Railway.
+  if (config?.logo_perdido && filas[0]?.id_configuracion) {
+    await pool.query(
+      'UPDATE configuracion_empresa SET logo_url = NULL, logo_public_id = NULL, fecha_actualizacion = NOW() WHERE id_configuracion = ?',
+      [filas[0].id_configuracion]
+    );
+    delete config.logo_perdido;
+  }
+
+  res.json(config);
 });
 
 const actualizarConfiguracion = asyncHandler(async (req, res) => {
@@ -41,7 +100,10 @@ const actualizarConfiguracion = asyncHandler(async (req, res) => {
   }
 
   const [filas] = await pool.query('SELECT * FROM configuracion_empresa ORDER BY id_configuracion DESC LIMIT 1');
-  res.json({ mensaje: 'Configuración actualizada correctamente.', configuracion: filas[0] });
+  res.json({
+    mensaje: 'Configuración actualizada correctamente.',
+    configuracion: enriquecerConfiguracion(filas[0], req),
+  });
 });
 
 const subirLogo = asyncHandler(async (req, res) => {
@@ -61,7 +123,6 @@ const subirLogo = asyncHandler(async (req, res) => {
         ['Distribuidora de Gas', subida.url, subida.publicId]
       );
     } else {
-      // Se reemplaza el logo anterior en Cloudinary si existía.
       if (existente[0].logo_public_id) await eliminarImagen(existente[0].logo_public_id);
       await pool.query(
         'UPDATE configuracion_empresa SET logo_url = ?, logo_public_id = ?, fecha_actualizacion = NOW() WHERE id_configuracion = ?',
@@ -70,7 +131,10 @@ const subirLogo = asyncHandler(async (req, res) => {
     }
 
     const [filas] = await pool.query('SELECT * FROM configuracion_empresa ORDER BY id_configuracion DESC LIMIT 1');
-    res.json({ mensaje: 'Logo actualizado correctamente.', configuracion: filas[0] });
+    res.json({
+      mensaje: 'Logo actualizado correctamente.',
+      configuracion: enriquecerConfiguracion(filas[0], req),
+    });
   } catch (error) {
     eliminarArchivoTemporal(req.file.path);
     throw error;
