@@ -11,7 +11,7 @@ const configuracionRoutes = require('./routes/configuracionRoutes');
 const usuariosRoutes = require('./routes/usuariosRoutes');
 const clientesRoutes = require('./routes/clientesRoutes');
 const { manejadorErrores, rutaNoEncontrada } = require('./middlewares/errorHandler');
-const { CARPETA_UPLOADS } = require('./utils/cloudinaryHelper');
+const { CARPETA_UPLOADS, cloudinaryConfigurado } = require('./utils/cloudinaryHelper');
 
 const app = express();
 
@@ -67,6 +67,7 @@ app.get('/api/salud', (req, res) => {
     estado: 'ok',
     mensaje: 'API del sistema de cilindros funcionando correctamente.',
     entorno: process.env.NODE_ENV || 'development',
+    cloudinary: cloudinaryConfigurado() ? 'activo' : 'inactivo',
   });
 });
 

@@ -4,11 +4,17 @@ const cloudinary = require('../config/cloudinary');
 
 const CARPETA_UPLOADS = path.join(__dirname, '..', '..', 'uploads');
 
+function valorEnv(nombre) {
+  const valor = process.env[nombre];
+  if (valor == null) return '';
+  return String(valor).trim();
+}
+
 function cloudinaryConfigurado() {
   return Boolean(
-    process.env.CLOUDINARY_CLOUD_NAME &&
-      process.env.CLOUDINARY_API_KEY &&
-      process.env.CLOUDINARY_API_SECRET
+    valorEnv('CLOUDINARY_CLOUD_NAME') &&
+      valorEnv('CLOUDINARY_API_KEY') &&
+      valorEnv('CLOUDINARY_API_SECRET')
   );
 }
 
