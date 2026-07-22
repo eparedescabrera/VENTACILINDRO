@@ -1,0 +1,32 @@
+{
+  "name": "sistema-cilindros-backend",
+  "version": "1.0.0",
+  "description": "Backend del sistema de ventas de cilindros de gas y gastos diarios",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "seed:db": "node src/scripts/crearBaseDatos.js",
+    "seed:admin": "node src/scripts/crearAdmin.js",
+    "seed:clientes": "node src/scripts/migrarClientes.js",
+    "seed:logo": "node src/scripts/aplicarLogoEmpresa.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cloudinary": "^1.41.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-validator": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "mysql2": "^3.10.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}
