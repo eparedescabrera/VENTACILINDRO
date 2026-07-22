@@ -11,33 +11,75 @@ function valorEnv(...nombres) {
   return '';
 }
 
+function parseMysqlUrl(url) {
+  const parsed = new URL(url);
+  return {
+    host: parsed.hostname,
+    port: Number(parsed.port) || 3306,
+    user: decodeURIComponent(parsed.username || 'root'),
+    password: decodeURIComponent(parsed.password || ''),
+    database: (parsed.pathname || '/').replace(/^\//, '') || 'railway',
+    fuente: 'url',
+  };
+}
+
 /**
- * Railway MySQL expone MYSQLHOST / MYSQLUSER / etc.
- * También se aceptan DB_* y, si existe, MYSQL_URL / DATABASE_URL.
+ * Prioridad:
+ * 1) DB_HOST + DB_* (manual / explícito)
+ * 2) MYSQL_URL o DATABASE_URL (privada de Railway)
+ * 3) MYSQLHOST / MYSQLUSER / ... (inyectadas por Railway)
+ * 4) MYSQL_PUBLIC_URL (solo si no hay otra opción)
  */
 function obtenerConfigDb() {
-  const url = valorEnv('MYSQL_URL', 'DATABASE_URL', 'MYSQL_PUBLIC_URL');
-  if (url && /^mysql(s)?:\/\//i.test(url)) {
+  const dbHost = valorEnv('DB_HOST');
+  if (dbHost) {
+    return {
+      host: dbHost,
+      port: Number(valorEnv('DB_PORT') || 3306),
+      user: valorEnv('DB_USER') || 'root',
+      password: valorEnv('DB_PASSWORD'),
+      database: valorEnv('DB_NAME') || 'railway',
+      fuente: 'DB_*',
+    };
+  }
+
+  const urlPrivada = valorEnv('MYSQL_URL', 'DATABASE_URL');
+  if (urlPrivada && /^mysql(s)?:\/\//i.test(urlPrivada)) {
     try {
-      const parsed = new URL(url);
-      return {
-        host: parsed.hostname,
-        port: Number(parsed.port) || 3306,
-        user: decodeURIComponent(parsed.username || 'root'),
-        password: decodeURIComponent(parsed.password || ''),
-        database: (parsed.pathname || '/').replace(/^\//, '') || 'railway',
-      };
+      return { ...parseMysqlUrl(urlPrivada), fuente: 'MYSQL_URL/DATABASE_URL' };
     } catch (error) {
       console.warn('No se pudo parsear MYSQL_URL/DATABASE_URL:', error.message);
     }
   }
 
+  const mysqlHost = valorEnv('MYSQLHOST', 'MYSQL_HOST');
+  if (mysqlHost) {
+    return {
+      host: mysqlHost,
+      port: Number(valorEnv('MYSQLPORT', 'MYSQL_PORT') || 3306),
+      user: valorEnv('MYSQLUSER', 'MYSQL_USER') || 'root',
+      password: valorEnv('MYSQLPASSWORD', 'MYSQL_PASSWORD'),
+      database: valorEnv('MYSQLDATABASE', 'MYSQL_DATABASE') || 'railway',
+      fuente: 'MYSQL*',
+    };
+  }
+
+  const urlPublica = valorEnv('MYSQL_PUBLIC_URL');
+  if (urlPublica && /^mysql(s)?:\/\//i.test(urlPublica)) {
+    try {
+      return { ...parseMysqlUrl(urlPublica), fuente: 'MYSQL_PUBLIC_URL' };
+    } catch (error) {
+      console.warn('No se pudo parsear MYSQL_PUBLIC_URL:', error.message);
+    }
+  }
+
   return {
-    host: valorEnv('DB_HOST', 'MYSQLHOST', 'MYSQL_HOST') || '127.0.0.1',
-    port: Number(valorEnv('DB_PORT', 'MYSQLPORT', 'MYSQL_PORT') || 3306),
-    user: valorEnv('DB_USER', 'MYSQLUSER', 'MYSQL_USER') || 'root',
-    password: valorEnv('DB_PASSWORD', 'MYSQLPASSWORD', 'MYSQL_PASSWORD'),
-    database: valorEnv('DB_NAME', 'MYSQLDATABASE', 'MYSQL_DATABASE') || 'sistema_cilindros',
+    host: '127.0.0.1',
+    port: 3306,
+    user: 'root',
+    password: '',
+    database: 'sistema_cilindros',
+    fuente: 'default',
   };
 }
 
@@ -65,7 +107,7 @@ const pool = mysql.createPool({
 
 async function verificarConexion(intentos = 8, esperaMs = 3000) {
   console.log(
-    `Conectando a MySQL: ${cfg.user}@${cfg.host}:${cfg.port}/${cfg.database} (ssl=${usarSsl})`
+    `Conectando a MySQL [${cfg.fuente}]: ${cfg.user}@${cfg.host}:${cfg.port}/${cfg.database} (ssl=${usarSsl})`
   );
 
   let ultimoError;
@@ -77,7 +119,7 @@ async function verificarConexion(intentos = 8, esperaMs = 3000) {
       return;
     } catch (error) {
       ultimoError = error;
-      console.error(`Intento ${i}/${intentos} falló: ${error.message}`);
+      console.error(`Intento ${i}/${intentos} falló: ${error.code || ''} ${error.message}`);
       if (i < intentos) {
         await new Promise((resolve) => setTimeout(resolve, esperaMs));
       }
@@ -86,7 +128,10 @@ async function verificarConexion(intentos = 8, esperaMs = 3000) {
 
   console.error('Error al conectar con MySQL:', ultimoError?.message || 'desconocido');
   console.error(
-    'Revise en Railway: DB_HOST/MYSQLHOST, DB_USER, DB_PASSWORD, DB_NAME, DB_SSL=true y que el servicio MySQL esté Running.'
+    'En Railway (backend → Variables): use host PRIVADO del MySQL del mismo proyecto.'
+  );
+  console.error(
+    'DB_HOST=${{NombreServicioMySQL.MYSQLHOST}} DB_PORT=3306 DB_USER=${{...MYSQLUSER}} DB_PASSWORD=${{...MYSQLPASSWORD}} DB_NAME=${{...MYSQLDATABASE}} DB_SSL=true'
   );
   process.exit(1);
 }
