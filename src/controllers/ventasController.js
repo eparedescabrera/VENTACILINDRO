@@ -1,7 +1,13 @@
 const { pool } = require('../config/db');
 const { validationResult } = require('express-validator');
 const asyncHandler = require('../utils/asyncHandler');
-const { subirImagen, eliminarImagen, eliminarArchivoTemporal } = require('../utils/cloudinaryHelper');
+const {
+  subirImagen,
+  eliminarImagen,
+  eliminarArchivoTemporal,
+  resolverUrlImagen,
+  archivoLocalExiste,
+} = require('../utils/cloudinaryHelper');
 
 const METODOS_CON_REFERENCIA = ['SINPE', 'Transferencia'];
 
@@ -166,7 +172,7 @@ const crearVenta = asyncHandler(async (req, res) => {
 
   try {
     if (req.file) {
-      const subida = await subirImagen(req.file.path);
+      const subida = await subirImagen(req.file.path, 'sistema-cilindros/comprobantes', req);
       comprobanteUrl = subida.url;
       comprobantePublicId = subida.publicId;
     }
@@ -274,7 +280,7 @@ const actualizarVenta = asyncHandler(async (req, res) => {
   try {
     if (req.file) {
       // Se reemplaza el comprobante: se elimina el anterior de Cloudinary.
-      const subida = await subirImagen(req.file.path);
+      const subida = await subirImagen(req.file.path, 'sistema-cilindros/comprobantes', req);
       if (comprobantePublicId) await eliminarImagen(comprobantePublicId);
       comprobanteUrl = subida.url;
       comprobantePublicId = subida.publicId;
@@ -372,7 +378,19 @@ const obtenerComprobante = asyncHandler(async (req, res) => {
     return res.status(404).json({ mensaje: 'Venta no encontrada.' });
   }
 
-  res.json(filas[0]);
+  const venta = filas[0];
+  const publicId = venta.comprobante_public_id;
+
+  if (publicId && String(publicId).startsWith('local:') && !archivoLocalExiste(publicId)) {
+    return res.status(404).json({
+      mensaje:
+        'El comprobante ya no está en el servidor (disco temporal de Railway). Configure Cloudinary y vuelva a subir la foto.',
+      comprobante_perdido: true,
+    });
+  }
+
+  venta.comprobante_url = resolverUrlImagen(venta.comprobante_url, publicId, req);
+  res.json(venta);
 });
 
 module.exports = {

@@ -17,8 +17,8 @@ const router = express.Router();
 router.use(verificarToken);
 
 router.get('/', listarVentas);
-router.get('/:id', obtenerVenta);
 router.get('/:id/comprobante', obtenerComprobante);
+router.get('/:id', obtenerVenta);
 router.post('/', upload.single('comprobante'), validarVenta, crearVenta);
 router.put('/:id', upload.single('comprobante'), validarVenta, actualizarVenta);
 router.patch('/:id/pagar', permitirRoles('Administrador'), marcarComoPagada);

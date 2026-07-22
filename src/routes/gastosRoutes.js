@@ -18,8 +18,8 @@ router.use(verificarToken);
 
 router.get('/categorias', listarCategorias);
 router.get('/', listarGastos);
-router.get('/:id', obtenerGasto);
 router.get('/:id/comprobante', obtenerComprobante);
+router.get('/:id', obtenerGasto);
 router.post('/', upload.single('comprobante'), validarGasto, crearGasto);
 router.put('/:id', upload.single('comprobante'), validarGasto, actualizarGasto);
 router.delete('/:id', eliminarGasto);

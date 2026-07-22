@@ -1,7 +1,13 @@
 const { pool } = require('../config/db');
 const { validationResult } = require('express-validator');
 const asyncHandler = require('../utils/asyncHandler');
-const { subirImagen, eliminarImagen, eliminarArchivoTemporal } = require('../utils/cloudinaryHelper');
+const {
+  subirImagen,
+  eliminarImagen,
+  eliminarArchivoTemporal,
+  resolverUrlImagen,
+  archivoLocalExiste,
+} = require('../utils/cloudinaryHelper');
 
 function esAdministrador(req) {
   return req.usuario?.rol === 'Administrador';
@@ -132,7 +138,7 @@ const crearGasto = asyncHandler(async (req, res) => {
 
   try {
     if (req.file) {
-      const subida = await subirImagen(req.file.path, 'sistema-cilindros/gastos');
+      const subida = await subirImagen(req.file.path, 'sistema-cilindros/gastos', req);
       comprobanteUrl = subida.url;
       comprobantePublicId = subida.publicId;
     }
@@ -211,7 +217,7 @@ const actualizarGasto = asyncHandler(async (req, res) => {
   let comprobantePublicId = gastoActual.comprobante_public_id;
 
   if (req.file) {
-    const subida = await subirImagen(req.file.path, 'sistema-cilindros/gastos');
+    const subida = await subirImagen(req.file.path, 'sistema-cilindros/gastos', req);
     if (comprobantePublicId) await eliminarImagen(comprobantePublicId);
     comprobanteUrl = subida.url;
     comprobantePublicId = subida.publicId;
@@ -284,7 +290,19 @@ const obtenerComprobante = asyncHandler(async (req, res) => {
     return res.status(404).json({ mensaje: 'Gasto no encontrado.' });
   }
 
-  res.json(filas[0]);
+  const gasto = filas[0];
+  const publicId = gasto.comprobante_public_id;
+
+  if (publicId && String(publicId).startsWith('local:') && !archivoLocalExiste(publicId)) {
+    return res.status(404).json({
+      mensaje:
+        'El comprobante ya no está en el servidor (disco temporal de Railway). Configure Cloudinary y vuelva a subir la foto.',
+      comprobante_perdido: true,
+    });
+  }
+
+  gasto.comprobante_url = resolverUrlImagen(gasto.comprobante_url, publicId, req);
+  res.json(gasto);
 });
 
 const listarCategorias = asyncHandler(async (req, res) => {

@@ -18,8 +18,20 @@ function cloudinaryConfigurado() {
   );
 }
 
-function urlBaseBackend() {
-  return (process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, '');
+function urlBaseBackend(req) {
+  const configurada = valorEnv('BACKEND_URL');
+  if (configurada) return configurada.replace(/\/$/, '');
+
+  const dominioRailway = valorEnv('RAILWAY_PUBLIC_DOMAIN');
+  if (dominioRailway) return `https://${dominioRailway.replace(/\/$/, '')}`;
+
+  if (req) {
+    const proto = req.get('x-forwarded-proto') || req.protocol || 'https';
+    const host = req.get('x-forwarded-host') || req.get('host');
+    if (host) return `${proto}://${host}`.replace(/\/$/, '');
+  }
+
+  return `http://localhost:${process.env.PORT || 3000}`;
 }
 
 function asegurarCarpeta(carpeta) {
@@ -29,9 +41,33 @@ function asegurarCarpeta(carpeta) {
 }
 
 /**
+ * Reescribe URLs locales con el host público actual (evita localhost o BACKEND_URL viejo).
+ */
+function resolverUrlImagen(url, publicId, req) {
+  if (publicId && String(publicId).startsWith('local:')) {
+    const relativo = String(publicId).slice('local:'.length).replace(/^\/+/, '');
+    return `${urlBaseBackend(req)}/uploads/${relativo}`;
+  }
+
+  if (url && String(url).includes('/uploads/')) {
+    const idx = String(url).indexOf('/uploads/');
+    return `${urlBaseBackend(req)}${String(url).slice(idx)}`;
+  }
+
+  return url || null;
+}
+
+function archivoLocalExiste(publicId) {
+  if (!publicId || !String(publicId).startsWith('local:')) return null;
+  const relativo = String(publicId).slice('local:'.length).replace(/^\/+/, '');
+  const ruta = path.join(CARPETA_UPLOADS, relativo);
+  return fs.existsSync(ruta) ? ruta : null;
+}
+
+/**
  * Guarda la imagen en disco local y devuelve una URL servida por Express.
  */
-function guardarImagenLocal(rutaArchivo, carpeta = 'comprobantes') {
+function guardarImagenLocal(rutaArchivo, carpeta = 'comprobantes', req) {
   const destinoDir = path.join(CARPETA_UPLOADS, carpeta);
   asegurarCarpeta(destinoDir);
 
@@ -42,21 +78,34 @@ function guardarImagenLocal(rutaArchivo, carpeta = 'comprobantes') {
   fs.copyFileSync(rutaArchivo, destino);
   eliminarArchivoTemporal(rutaArchivo);
 
+  const publicId = `local:${carpeta}/${nombre}`;
   return {
-    url: `${urlBaseBackend()}/uploads/${carpeta}/${nombre}`,
-    publicId: `local:${carpeta}/${nombre}`,
+    url: resolverUrlImagen(null, publicId, req),
+    publicId,
   };
 }
 
 /**
  * Sube un archivo a Cloudinary si está configurado; si no, lo guarda en disco local.
- * Así las ventas/gastos se pueden guardar aunque Cloudinary no tenga credenciales.
+ * En producción Railway exige Cloudinary (el disco es temporal).
  */
-async function subirImagen(rutaArchivo, carpeta = 'sistema-cilindros/comprobantes') {
+async function subirImagen(rutaArchivo, carpeta = 'sistema-cilindros/comprobantes', req) {
   if (!cloudinaryConfigurado()) {
+    const enProduccion =
+      String(process.env.NODE_ENV || '').toLowerCase() === 'production' ||
+      Boolean(valorEnv('RAILWAY_ENVIRONMENT') || valorEnv('RAILWAY_PUBLIC_DOMAIN'));
+
+    if (enProduccion) {
+      const error = new Error(
+        'Cloudinary no está configurado en Railway. Agregue CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY y CLOUDINARY_API_SECRET para que las fotos no se pierdan.'
+      );
+      error.status = 503;
+      throw error;
+    }
+
     console.warn('Cloudinary no configurado: guardando imagen en disco local.');
     const carpetaLocal = carpeta.includes('logo') ? 'logo' : carpeta.includes('gastos') ? 'gastos' : 'comprobantes';
-    return guardarImagenLocal(rutaArchivo, carpetaLocal);
+    return guardarImagenLocal(rutaArchivo, carpetaLocal, req);
   }
 
   try {
@@ -105,5 +154,7 @@ module.exports = {
   eliminarImagen,
   eliminarArchivoTemporal,
   cloudinaryConfigurado,
+  resolverUrlImagen,
+  archivoLocalExiste,
   CARPETA_UPLOADS,
 };

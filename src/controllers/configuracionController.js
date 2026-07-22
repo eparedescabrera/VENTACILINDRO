@@ -52,7 +52,7 @@ const subirLogo = asyncHandler(async (req, res) => {
   const [existente] = await pool.query('SELECT * FROM configuracion_empresa ORDER BY id_configuracion DESC LIMIT 1');
 
   try {
-    const subida = await subirImagen(req.file.path, 'sistema-cilindros/logo');
+    const subida = await subirImagen(req.file.path, 'sistema-cilindros/logo', req);
 
     if (existente.length === 0) {
       await pool.query(
