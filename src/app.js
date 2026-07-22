@@ -53,6 +53,15 @@ app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
 app.use('/uploads', express.static(CARPETA_UPLOADS));
 
+app.get('/', (req, res) => {
+  res.json({
+    estado: 'ok',
+    mensaje: 'API de GRUPO GAS GUANACASTE SRL (sistema de cilindros)',
+    salud: '/api/salud',
+    documentacion: 'Use las rutas /api/auth, /api/ventas, /api/gastos, etc.',
+  });
+});
+
 app.get('/api/salud', (req, res) => {
   res.json({
     estado: 'ok',
