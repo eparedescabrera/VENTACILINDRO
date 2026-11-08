@@ -14,6 +14,7 @@ const productosRoutes = require('./routes/productosRoutes');
 const proformasRoutes = require('./routes/proformasRoutes');
 const { manejadorErrores, rutaNoEncontrada } = require('./middlewares/errorHandler');
 const { CARPETA_UPLOADS, cloudinaryConfigurado } = require('./utils/cloudinaryHelper');
+const { infoMysqlDebug } = require('./config/db');
 
 const app = express();
 
@@ -70,6 +71,7 @@ app.get('/api/salud', (req, res) => {
     mensaje: 'API del sistema de cilindros funcionando correctamente.',
     entorno: process.env.NODE_ENV || 'development',
     cloudinary: cloudinaryConfigurado() ? 'activo' : 'inactivo',
+    mysql: infoMysqlDebug(),
   });
 });
 

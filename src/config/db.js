@@ -28,11 +28,11 @@ function esHostPrivadoRailway(host) {
 }
 
 /**
- * Prioridad (evita DB_PASSWORD viejo cuando Railway ya inyecta MYSQL*):
- * 1) MYSQLHOST + MYSQLPASSWORD (inyectadas al vincular MySQL)
- * 2) MYSQL_URL / DATABASE_URL si el host es privado (.railway.internal)
- * 3) DB_* manual
- * 4) MYSQL_URL pública / MYSQL_PUBLIC_URL
+ * Prioridad:
+ * 1) MYSQLHOST + MYSQLPASSWORD (Railway al vincular servicios)
+ * 2) MYSQL_URL privada
+ * 3) DB_*
+ * 4) URLs públicas
  */
 function obtenerConfigDb() {
   const mysqlHost = valorEnv('MYSQLHOST', 'MYSQL_HOST');
@@ -101,25 +101,64 @@ function obtenerConfigDb() {
 
 const cfg = obtenerConfigDb();
 
-const usarSsl =
-  String(process.env.DB_SSL || '').toLowerCase() === 'true' ||
-  String(process.env.NODE_ENV || '') === 'production';
+// En red privada de Railway el SSL a veces rompe el handshake; se puede forzar con DB_SSL=true.
+const forzarSsl = String(process.env.DB_SSL || '').toLowerCase() === 'true';
+const forzarSinSsl = String(process.env.DB_SSL || '').toLowerCase() === 'false';
+const usarSsl = forzarSinSsl
+  ? false
+  : forzarSsl
+    ? true
+    : !esHostPrivadoRailway(cfg.host) && String(process.env.NODE_ENV || '') === 'production';
 
-const pool = mysql.createPool({
-  host: cfg.host,
-  port: cfg.port,
-  user: cfg.user,
-  password: cfg.password,
-  database: cfg.database,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-  dateStrings: true,
-  connectTimeout: 20000,
-  enableKeepAlive: true,
-  keepAliveInitialDelay: 0,
-  ...(usarSsl ? { ssl: { rejectUnauthorized: false } } : {}),
-});
+function crearPool(conSsl) {
+  return mysql.createPool({
+    host: cfg.host,
+    port: cfg.port,
+    user: cfg.user,
+    password: cfg.password,
+    database: cfg.database,
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+    dateStrings: true,
+    connectTimeout: 20000,
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 0,
+    ...(conSsl ? { ssl: { rejectUnauthorized: false } } : {}),
+  });
+}
+
+const estado = {
+  pool: crearPool(usarSsl),
+  sslActivo: usarSsl,
+};
+
+function infoMysqlDebug() {
+  return {
+    fuente: cfg.fuente,
+    host: cfg.host,
+    port: cfg.port,
+    user: cfg.user,
+    database: cfg.database,
+    ssl: estado.sslActivo,
+    passLen: (cfg.password || '').length,
+    vars: {
+      MYSQLHOST: Boolean(valorEnv('MYSQLHOST', 'MYSQL_HOST')),
+      MYSQLPASSWORD: Boolean(valorEnv('MYSQLPASSWORD', 'MYSQL_PASSWORD')),
+      MYSQL_URL: Boolean(valorEnv('MYSQL_URL')),
+      DATABASE_URL: Boolean(valorEnv('DATABASE_URL')),
+      DB_HOST: Boolean(valorEnv('DB_HOST')),
+      DB_PASSWORD: Boolean(valorEnv('DB_PASSWORD')),
+      MYSQL_PUBLIC_URL: Boolean(valorEnv('MYSQL_PUBLIC_URL')),
+    },
+  };
+}
+
+async function probarPool(poolProbar) {
+  const conexion = await poolProbar.getConnection();
+  await conexion.query('SELECT 1');
+  conexion.release();
+}
 
 /**
  * @param {number} intentos
@@ -129,19 +168,35 @@ const pool = mysql.createPool({
 async function verificarConexion(intentos = 8, esperaMs = 3000, opciones = {}) {
   const salir = opciones.salir !== false;
   console.log(
-    `Conectando a MySQL [${cfg.fuente}]: ${cfg.user}@${cfg.host}:${cfg.port}/${cfg.database} (ssl=${usarSsl}, passLen=${(cfg.password || '').length})`
+    `Conectando a MySQL [${cfg.fuente}]: ${cfg.user}@${cfg.host}:${cfg.port}/${cfg.database} (ssl=${estado.sslActivo}, passLen=${(cfg.password || '').length})`
   );
+  console.log('MySQL env flags:', JSON.stringify(infoMysqlDebug().vars));
 
   let ultimoError;
   for (let i = 1; i <= intentos; i += 1) {
     try {
-      const conexion = await pool.getConnection();
+      await probarPool(estado.pool);
       console.log('Conexión a MySQL establecida correctamente.');
-      conexion.release();
       return true;
     } catch (error) {
       ultimoError = error;
       console.error(`Intento ${i}/${intentos} falló: ${error.code || ''} ${error.message}`);
+
+      if (i === 1 && esHostPrivadoRailway(cfg.host) && estado.sslActivo) {
+        console.warn('Reintentando MySQL sin SSL (red privada Railway)...');
+        try {
+          const poolSinSsl = crearPool(false);
+          await probarPool(poolSinSsl);
+          estado.pool = poolSinSsl;
+          estado.sslActivo = false;
+          console.log('Conexión a MySQL establecida correctamente (sin SSL).');
+          return true;
+        } catch (errorSsl) {
+          console.error('También falló sin SSL:', errorSsl.message);
+          ultimoError = errorSsl;
+        }
+      }
+
       if (i < intentos) {
         await new Promise((resolve) => setTimeout(resolve, esperaMs));
       }
@@ -150,11 +205,17 @@ async function verificarConexion(intentos = 8, esperaMs = 3000, opciones = {}) {
 
   console.error('Error al conectar con MySQL:', ultimoError?.message || 'desconocido');
   console.error(
-    'Access denied = password incorrecta. En el backend BORRE DB_PASSWORD viejo y use Variable Reference a MYSQLPASSWORD del MySQL, o vincule el servicio MySQL para inyectar MYSQLHOST/MYSQLPASSWORD.'
+    'Access denied = clave incorrecta. En backend ELIMINE DB_PASSWORD y DATABASE_URL viejos. Vincule el servicio MySQL (Variables → Reference → MYSQLPASSWORD).'
   );
 
   if (salir) process.exit(1);
   return false;
 }
 
-module.exports = { pool, verificarConexion };
+module.exports = {
+  get pool() {
+    return estado.pool;
+  },
+  verificarConexion,
+  infoMysqlDebug,
+};
