@@ -8,10 +8,7 @@ const PUERTO = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 
 async function iniciar() {
-  // Conexión rápida: si falla, Railway reintenta el contenedor.
-  await verificarConexion(5, 2000);
-
-  // Escuchar ANTES del esquema para que el healthcheck de Railway pase a tiempo.
+  // 1) Escuchar de inmediato para pasar el healthcheck de Railway.
   app.listen(PUERTO, HOST, () => {
     console.log(`Servidor backend escuchando en ${HOST}:${PUERTO}`);
     if (cloudinaryConfigurado()) {
@@ -21,11 +18,16 @@ async function iniciar() {
     }
   });
 
+  // 2) MySQL + esquema en segundo plano (no bloquea /api/salud).
   try {
+    const ok = await verificarConexion(6, 2000, { salir: false });
+    if (!ok) {
+      console.error('MySQL no disponible al iniciar; el API sigue en pie para el healthcheck.');
+      return;
+    }
     await asegurarEsquemaProformas();
   } catch (error) {
-    // No tumbar el API: el healthcheck ya puede responder; se reintenta en el próximo deploy.
-    console.error('No se pudo asegurar el esquema de proformas:', error.message);
+    console.error('Error post-arranque (MySQL/proformas):', error.message);
   }
 }
 

@@ -105,7 +105,13 @@ const pool = mysql.createPool({
   ...(usarSsl ? { ssl: { rejectUnauthorized: false } } : {}),
 });
 
-async function verificarConexion(intentos = 8, esperaMs = 3000) {
+/**
+ * @param {number} intentos
+ * @param {number} esperaMs
+ * @param {{ salir?: boolean }} opciones  salir=false no mata el proceso (útil con healthcheck)
+ */
+async function verificarConexion(intentos = 8, esperaMs = 3000, opciones = {}) {
+  const salir = opciones.salir !== false;
   console.log(
     `Conectando a MySQL [${cfg.fuente}]: ${cfg.user}@${cfg.host}:${cfg.port}/${cfg.database} (ssl=${usarSsl})`
   );
@@ -116,7 +122,7 @@ async function verificarConexion(intentos = 8, esperaMs = 3000) {
       const conexion = await pool.getConnection();
       console.log('Conexión a MySQL establecida correctamente.');
       conexion.release();
-      return;
+      return true;
     } catch (error) {
       ultimoError = error;
       console.error(`Intento ${i}/${intentos} falló: ${error.code || ''} ${error.message}`);
@@ -133,7 +139,9 @@ async function verificarConexion(intentos = 8, esperaMs = 3000) {
   console.error(
     'DB_HOST=${{NombreServicioMySQL.MYSQLHOST}} DB_PORT=3306 DB_USER=${{...MYSQLUSER}} DB_PASSWORD=${{...MYSQLPASSWORD}} DB_NAME=${{...MYSQLDATABASE}} DB_SSL=true'
   );
-  process.exit(1);
+
+  if (salir) process.exit(1);
+  return false;
 }
 
 module.exports = { pool, verificarConexion };
