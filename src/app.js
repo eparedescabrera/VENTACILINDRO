@@ -10,6 +10,8 @@ const reportesRoutes = require('./routes/reportesRoutes');
 const configuracionRoutes = require('./routes/configuracionRoutes');
 const usuariosRoutes = require('./routes/usuariosRoutes');
 const clientesRoutes = require('./routes/clientesRoutes');
+const productosRoutes = require('./routes/productosRoutes');
+const proformasRoutes = require('./routes/proformasRoutes');
 const { manejadorErrores, rutaNoEncontrada } = require('./middlewares/errorHandler');
 const { CARPETA_UPLOADS, cloudinaryConfigurado } = require('./utils/cloudinaryHelper');
 
@@ -79,6 +81,8 @@ app.use('/api/reportes', reportesRoutes);
 app.use('/api/configuracion', configuracionRoutes);
 app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/clientes', clientesRoutes);
+app.use('/api/productos', productosRoutes);
+app.use('/api/proformas', proformasRoutes);
 
 app.use(rutaNoEncontrada);
 app.use(manejadorErrores);

@@ -118,3 +118,5 @@ INSERT IGNORE INTO categorias_gastos (nombre, descripcion) VALUES
 INSERT INTO configuracion_empresa (nombre_empresa, cedula_juridica, telefono, correo, direccion, mensaje_reporte)
 SELECT 'GRUPO GAS GUANACASTE SRL', '0-000-000000', '0000-0000', 'contacto@grupogasguanacaste.com', 'Guanacaste, Costa Rica', 'Gracias por su confianza. GRUPO GAS GUANACASTE SRL'
 WHERE NOT EXISTS (SELECT 1 FROM configuracion_empresa LIMIT 1);
+
+-- Nota: tablas de proformas/productos están en migracion_proformas.sql (npm run seed:proformas)

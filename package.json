@@ -13,7 +13,8 @@
     "seed:db": "node src/scripts/crearBaseDatos.js",
     "seed:admin": "node src/scripts/crearAdmin.js",
     "seed:clientes": "node src/scripts/migrarClientes.js",
-    "seed:logo": "node src/scripts/aplicarLogoEmpresa.js"
+    "seed:logo": "node src/scripts/aplicarLogoEmpresa.js",
+    "seed:proformas": "node src/scripts/migrarProformas.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
