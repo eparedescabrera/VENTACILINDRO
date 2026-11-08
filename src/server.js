@@ -8,15 +8,10 @@ const PUERTO = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 
 async function iniciar() {
-  await verificarConexion();
+  // Conexión rápida: si falla, Railway reintenta el contenedor.
+  await verificarConexion(5, 2000);
 
-  try {
-    await asegurarEsquemaProformas();
-  } catch (error) {
-    console.error('No se pudo asegurar el esquema de proformas:', error.message);
-    process.exit(1);
-  }
-
+  // Escuchar ANTES del esquema para que el healthcheck de Railway pase a tiempo.
   app.listen(PUERTO, HOST, () => {
     console.log(`Servidor backend escuchando en ${HOST}:${PUERTO}`);
     if (cloudinaryConfigurado()) {
@@ -25,6 +20,16 @@ async function iniciar() {
       console.warn('Cloudinary: NO configurado (en Railway las imagenes se pierden al reiniciar)');
     }
   });
+
+  try {
+    await asegurarEsquemaProformas();
+  } catch (error) {
+    // No tumbar el API: el healthcheck ya puede responder; se reintenta en el próximo deploy.
+    console.error('No se pudo asegurar el esquema de proformas:', error.message);
+  }
 }
 
-iniciar();
+iniciar().catch((error) => {
+  console.error('Error al iniciar el servidor:', error.message);
+  process.exit(1);
+});
